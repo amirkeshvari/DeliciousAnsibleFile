@@ -1,0 +1,74 @@
+- name: install kube tools and run cluster
+  hosts: all
+  become: yes
+  tasks:
+  - name: remove swapfile from /etc/fstab
+    mount:
+      name: "{{ item }}"
+      fstype: swap
+      state: absent
+    with_items:
+      - swap
+      - none
+  - name: disable swap
+    command: swapoff -a
+    when: ansible_swaptotal_mb > 0
+  - name: remove containerd and docker
+    apt:
+     name: "{{ item }}"
+     state: absent
+     update_cache: yes
+    with_items:
+    - docker
+    - docker-engine
+    - docker-io
+    - containerd
+    - runc
+  - name: install curl gnupg ca certificate
+    apt:
+      name: "{{ item }}"
+      state: latest
+      update_cache: yes
+    with_items:
+    - ca-certificates
+    - apt-transport-https
+    - curl
+    - gnupg
+  - name: add an apt signing key for docker
+    apt_key:
+      url: https://download.docker.com/linux/ubuntu/gpg
+      state: present
+  - name: install containerd
+    apt:
+      name: containerd
+      state: latest
+      update_cache: yes
+  - name: containerd config default
+    command: containerd config default > /etc/containerd/config.toml
+  - name: true systemdcgroup
+    shell: sed -E -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
+  - name: restart containerd
+    service:
+      name: containerd
+      state: restarted
+  - name: modprobe br_netfilter
+    command: modprobe br_netfilter overlay
+  - name: Add an apt signing key for Kubernetes
+    apt_key:
+      url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+      state: present
+
+  - name: Adding apt repository for Kubernetes
+    apt_repository:
+      repo: deb https://apt.kubernetes.io/ kubernetes-xenial main
+      state: present
+      filename: kubernetes.list
+  - name: install kubelet kubeadm kubectl
+    apt:
+      name: "{{ item }}"
+      state: latest
+      update_cache: yes
+    with_items:
+    - kubelet
+    - kubeadm
+    - kubectl
